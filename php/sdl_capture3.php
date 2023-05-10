@@ -22,31 +22,41 @@ $joystick_index = 0; // Change to desired joystick index
 $joystick_name = $ffi->SDL_JoystickNameForIndex($joystick_index);
 $joystick = $ffi->SDL_JoystickOpen($joystick_index);
 
-$recordings = json_decode(file_get_contents("joystick_recordings.json"), true);
+$num_axes = $ffi->SDL_JoystickNumAxes($joystick);
+$num_buttons = $ffi->SDL_JoystickNumButtons($joystick);
 
-foreach ($recordings as $recording) {
-    $start_time = $recording["time"];
+$recordings = array();
 
-    $axis_values = $recording["axes"];
-    for ($i = 0; $i < count($axis_values); $i++) {
+while (true) {
+    $start_time = microtime(true);
+    $axis_values = array();
+    for ($i = 0; $i < $num_axes; $i++) {
         $axis = $ffi->SDL_JoystickGetAxis($joystick, $i);
-        $axis->x = $axis_values[$i];
+        $axis_values[$i] = $axis->x;
     }
 
-    $button_values = $recording["buttons"];
-    for ($i = 0; $i < count($button_values); $i++) {
+    $button_values = array();
+    for ($i = 0; $i < $num_buttons; $i++) {
         $button = $ffi->SDL_JoystickGetButton($joystick, $i);
-        $button = $button_values[$i];
+        $button_values[$i] = $button;
     }
 
     $end_time = microtime(true);
-    $duration = $recording["duration"];
+    $duration = $end_time - $start_time;
 
-    $elapsed_time = microtime(true) - $start_time;
+    $recording = array(
+        "time" => $start_time,
+        "duration" => $duration,
+        "axes" => $axis_values,
+        "buttons" => $button_values
+    );
 
-    if ($elapsed_time < $duration) {
-        usleep(($duration - $elapsed_time) * 1000000);
-    }
+    $recordings[] = $recording;
+
+    usleep(1000);
 }
 
 $ffi->SDL_JoystickClose($joystick);
+
+$json_data = json_encode($recordings);
+file_put_contents("joystick_recordings.json", $json_data);
