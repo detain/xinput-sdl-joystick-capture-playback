@@ -1,0 +1,9 @@
+#r "sdl2"
+open SDL2
+let sdlInitFlags = Sdl.InitFlags.Video + Sdl.InitFlags.GameController
+let sdlJoystickIndex = -1
+let numJoysticks = Sdl.Joystick.NumJoysticks()
+for i in 0..numJoysticks-1 do
+    let joystick = Sdl.Joystick.Open(i)
+    printfn "Joystick %d: %s" i (Sdl.Joystick.Name joystick)
+    Sdl.Joystick.Close joystick

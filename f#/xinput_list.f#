@@ -1,0 +1,24 @@
+#r "FSharp.Interop.WindowsTypes"
+#r "FSharp.Core.Native"
+
+open Microsoft.FSharp.Collections
+open Microsoft.FSharp.Collections.NativeInterop
+open FSharp.Interop.WindowsTypes
+open System.Runtime.InteropServices
+
+[<DllImport("xinput1_4.dll")>]
+extern int XInputGetState(int dwUserIndex, out XINPUT_STATE pState)
+
+let xinputGetState (index: int) =
+    let mutable state = XINPUT_STATE()
+    let result = XInputGetState index &state
+    if result = 0 then Some state else None
+
+let listXInputDevices () =
+    [1..4]
+    |> List.map (fun i -> (i, xinputGetState i))
+    |> List.filter (fun (_, state) -> state.IsSome)
+    |> List.map (fun (i, _) -> $"XInput Device {i}")
+    |> printfn "Connected XInput Devices: %A"
+
+listXInputDevices()

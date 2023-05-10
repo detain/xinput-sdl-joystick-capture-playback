@@ -1,0 +1,145 @@
+#r "FSharp.Core"
+#r "Newtonsoft.Json"
+
+open System.IO
+open System.Text
+open FSharp.Core
+open Newtonsoft.Json
+
+[<Struct>]
+type XINPUT_GAMEPAD_EX =
+    val mutable wButtons : uint16
+    val mutable bLeftTrigger : byte
+    val mutable bRightTrigger : byte
+    val mutable sThumbLX : int16
+    val mutable sThumbLY : int16
+    val mutable sThumbRX : int16
+    val mutable sThumbRY : int16
+    new () = {
+        wButtons = 0us;
+        bLeftTrigger = 0uy;
+        bRightTrigger = 0uy;
+        sThumbLX = 0s;
+        sThumbLY = 0s;
+        sThumbRX = 0s;
+        sThumbRY = 0s;
+    }
+
+[<DllImport("xinput1_4.dll")>]
+extern int XInputGetState(int dwUserIndex, out XINPUT_STATE pState)
+
+type XInputDeviceRecorder(deviceIndex: int, outputFile: string) =
+    let mutable state = XINPUT_STATE()
+    let mutable lastRecordedTime = DateTime.Now
+    let mutable recordedEvents = []
+    let serializer = JsonSerializer()
+
+    let createNewEvent eventType =
+        let currentTime = DateTime.Now
+        let eventDuration = currentTime - lastRecordedTime
+        lastRecordedTime <- currentTime
+        let event = (eventType, eventDuration.TotalMilliseconds)
+        recordedEvents <- event :: recordedEvents
+
+    let recordStateChange () =
+        let newState = XINPUT_STATE()
+        let result = XInputGetState deviceIndex &newState
+        if result = 0 && state.Gamepad = newState.Gamepad then
+            ()
+        else
+            if newState.Gamepad.wButtons <> state.Gamepad.wButtons then
+                createNewEvent (sprintf "Button Pressed: %x" newState.Gamepad.wButtons)
+            if newState.Gamepad.bLeftTrigger <> state.Gamepad.bLeftTrigger then
+                createNewEvent (sprintf "Left Trigger: %d" newState.Gamepad.bLeftTrigger)
+            if newState.Gamepad.bRightTrigger <> state.Gamepad.bRightTrigger then
+                createNewEvent (sprintf "Right Trigger: %d" newState.Gamepad.bRightTrigger)
+            if newState.Gamepad.sThumbLX <> state.Gamepad.sThumbLX || newState.Gamepad.sThumbLY <> state.Gamepad.sThumbLY then
+                createNewEvent (sprintf "Left Thumbstick: (%d, %d)" newState.Gamepad.sThumbLX newState.Gamepad.sThumbLY)
+            if newState.Gamepad.sThumbRX <> state.Gamepad.sThumbRX || newState.Gamepad.sThumbRY <> state.Gamepad.sThumbRY then
+                createNewEvent (sprintf "Right Thumbstick: (%d, %d)" newState.Gamepad.sThumbRX newState.Gamepad.sThumbRY)
+            state <- newState
+
+    let recordLoop () =
+        while true do
+            recordStateChange ()
+            System.Threading.Thread.Sleep 1
+
+    member this.StartRecording () =
+        let thread = new System.Threading.Thread(new System.Threading.ThreadStart(recordLoop))
+        thread.Start()
+
+    member this.StopRecording () =
+        let jsonData = JsonConvert.SerializeObject(recordedEvents)
+        use writer = new StreamWriter(outputFile)
+        writer.Write(jsonData)
+
+let startRecording deviceIndex outputFile =
+    let recorder = XInputDeviceRecorder(deviceIndex, outputFile)
+    recorder.StartRecording()
+    printfn "Recording started. Press any key to stop recording..."
+    Console.ReadKey(true) |> ignore
+
+open System.IO
+open System.Text.Json
+
+let saveXInputJoystickInput filePath joystickIndex =
+    let joy = new SharpDX.XInput.Controller((SharpDX.XInput.UserIndex) joystickIndex)
+    let jsonWriter = new Utf8JsonWriter(File.Create(filePath))
+    let mutable lastBtnState = [||]
+    let mutable lastLeftTrigger = 0
+    let mutable lastRightTrigger = 0
+    let mutable lastLeftThumbX = 0
+    let mutable lastLeftThumbY = 0
+    let mutable lastRightThumbX = 0
+    let mutable lastRightThumbY = 0
+    jsonWriter.WriteStartArray()
+    let startTime = System.Diagnostics.Stopwatch.StartNew()
+    while true do
+        let btnState = joy.GetState().Gamepad.Buttons
+        let leftTrigger = joy.GetState().Gamepad.LeftTrigger
+        let rightTrigger = joy.GetState().Gamepad.RightTrigger
+        let leftThumbX = joy.GetState().Gamepad.LeftThumbX
+        let leftThumbY = joy.GetState().Gamepad.LeftThumbY
+        let rightThumbX = joy.GetState().Gamepad.RightThumbX
+        let rightThumbY = joy.GetState().Gamepad.RightThumbY
+        if btnState <> lastBtnState || leftTrigger <> lastLeftTrigger || rightTrigger <> lastRightTrigger ||
+            leftThumbX <> lastLeftThumbX || leftThumbY <> lastLeftThumbY || rightThumbX <> lastRightThumbX || rightThumbY <> lastRightThumbY then
+            let elapsed = startTime.ElapsedMilliseconds
+            let inputObj =
+                JsonValueKind.Object,
+                [
+                    "elapsed", JsonValueKind.Number (elapsed |> float)
+                    "buttons", JsonValueKind.Array (btnState |> Array.map (fun b -> JsonValueKind.Number (b |> byte)))
+                    "leftTrigger", JsonValueKind.Number (leftTrigger |> byte)
+                    "rightTrigger", JsonValueKind.Number (rightTrigger |> byte)
+                    "leftThumbX", JsonValueKind.Number (leftThumbX |> int16)
+                    "leftThumbY", JsonValueKind.Number (leftThumbY |> int16)
+                    "rightThumbX", JsonValueKind.Number (rightThumbX |> int16)
+                    "rightThumbY", JsonValueKind.Number (rightThumbY |> int16)
+                ]
+            jsonWriter.WriteStartObject()
+            for (key, value) in inputObj do
+                jsonWriter.WritePropertyName key
+                match value with
+                | JsonValueKind.Number n -> jsonWriter.WriteNumberValue n
+                | JsonValueKind.Array a ->
+                    jsonWriter.WriteStartArray()
+                    for element in a do
+                        match element with
+                        | JsonValueKind.Number n -> jsonWriter.WriteNumberValue n
+                        | _ -> failwith "invalid json value kind in array"
+                    jsonWriter.WriteEndArray()
+                | _ -> failwith "invalid json value kind in object"
+            jsonWriter.WriteEndObject()
+            lastBtnState <- btnState
+            lastLeftTrigger <- leftTrigger
+            lastRightTrigger <- rightTrigger
+            lastLeftThumbX <- leftThumbX
+            lastLeftThumbY <- leftThumbY
+            lastRightThumbX <- rightThumbX
+            lastRightThumbY <- rightThumbY
+            jsonWriter.Flush()
+            System.Threading.Thread.Sleep(10)
+    jsonWriter.WriteEndArray()
+    jsonWriter.Flush()
+    jsonWriter.Dispose()

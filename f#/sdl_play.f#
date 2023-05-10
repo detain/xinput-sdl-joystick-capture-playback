@@ -1,0 +1,47 @@
+#r "Newtonsoft.Json"
+#r "sdl2"
+open Newtonsoft.Json
+open Newtonsoft.Json.Linq
+open SDL2
+
+let sdlInitFlags = Sdl.InitFlags.Video + Sdl.InitFlags.GameController
+let sdlJoystickIndex = 0
+let numButtons = Sdl.Joystick.NumButtons(sdlJoystickIndex)
+let eventQueue = Queue()
+
+let readJoystickInput (filePath: string) =
+    let reader = new System.IO.StreamReader(filePath)
+    let serializer = new JsonSerializer()
+    while not reader.EndOfStream do
+        let data = serializer.Deserialize<JObject>(new JsonTextReader(reader))
+        eventQueue.Enqueue data
+    reader.Close()
+
+let playJoystickInput () =
+    Sdl.Init sdlInitFlags |> ignore
+    let joystick = Sdl.Joystick.Open(sdlJoystickIndex)
+    let mutable lastTime = 0u
+    let mutable lastButton = -1
+    while true do
+        if not (eventQueue.IsEmpty) then
+            let data = eventQueue.Peek()
+            let time = data.GetValue("time").Value<uint32>()
+            let duration = data.GetValue("duration").Value<uint32>()
+            let button = data.GetValue("button").Value<int>()
+            let eventType = data.GetValue("type").Value<string>()
+            if time - lastTime >= duration then
+                if eventType = "button_press" then
+                    Sdl.Joystick.SetButton joystick button 1
+                    lastButton <- button
+                else
+                    Sdl.Joystick.SetButton joystick lastButton 0
+                    lastButton <- -1
+                lastTime <- time
+                eventQueue.Dequeue() |> ignore
+        Sdl.Delay(10)
+
+    Sdl.Joystick.Close joystick |> ignore
+    Sdl.Quit()
+
+readJoystickInput "joystick_input.json"
+playJoystickInput()

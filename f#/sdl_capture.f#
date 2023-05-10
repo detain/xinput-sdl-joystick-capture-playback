@@ -1,0 +1,60 @@
+#r "Newtonsoft.Json"
+#r "sdl2"
+open Newtonsoft.Json
+open Newtonsoft.Json.Linq
+open SDL2
+let sdlInitFlags = Sdl.InitFlags.Video + Sdl.InitFlags.GameController
+let sdlJoystickIndex = 0
+let numButtons = Sdl.Joystick.NumButtons(sdlJoystickIndex)
+let eventQueue = Queue()
+
+let recordJoystickInput (filePath: string) =
+    let writer = new System.IO.StreamWriter(filePath)
+    let serializer = new JsonSerializer()
+    Sdl.Init sdlInitFlags |> ignore
+    let joystick = Sdl.Joystick.Open(sdlJoystickIndex)
+    let mutable lastTime = 0u
+    let mutable lastButton = -1
+    while true do
+        while Sdl.PollEvent(&Sdl.EventStruct()) <> 0 do
+            match Sdl.Event.asType() with
+            | Sdl.EventType.JOYBUTTONDOWN ->
+                let event = Sdl.Event.jbutton
+                if event.which = sdlJoystickIndex then
+                    let time = Sdl.Timer.GetTicks()
+                    let duration = if lastTime = 0u then 0u else time - lastTime
+                    let button = event.button
+                    let data = JObject([
+                        "time", time
+                        "duration", duration
+                        "button", button
+                        "type", "button_press"
+                    ])
+                    eventQueue.Enqueue data
+                    lastTime <- time
+                    lastButton <- button
+            | Sdl.EventType.JOYBUTTONUP ->
+                let event = Sdl.Event.jbutton
+                if event.which = sdlJoystickIndex then
+                    let time = Sdl.Timer.GetTicks()
+                    let duration = if lastTime = 0u then 0u else time - lastTime
+                    let button = event.button
+                    let data = JObject([
+                        "time", time
+                        "duration", duration
+                        "button", button
+                        "type", "button_release"
+                    ])
+                    eventQueue.Enqueue data
+                    lastTime <- time
+                    lastButton <- button
+        if not (eventQueue.IsEmpty) then
+            let data = eventQueue.Dequeue()
+            serializer.Serialize(writer, data)
+            writer.WriteLine()
+        System.Threading.Thread.Sleep(10)
+    Sdl.Joystick.Close joystick |> ignore
+    Sdl.Quit()
+    writer.Close()
+
+recordJoystickInput "joystick_input.json"
