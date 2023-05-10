@@ -1,0 +1,132 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using SharpDX.XInput;
+
+namespace XInputRecorder
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            int userIndex = 0; // Replace with the desired user index
+            string inputFile = "input.json"; // Replace with the input file name
+
+            List<GamepadInput> inputs = Newtonsoft.Json.JsonConvert.DeserializeObject<List<GamepadInput>>(File.ReadAllText(inputFile));
+
+            var controller = new Controller((UserIndex)userIndex);
+
+            Console.WriteLine("Press enter to start playback...");
+            Console.ReadLine();
+
+            XInputEnable(true);
+
+            while (true)
+            {
+                foreach (GamepadInput input in inputs)
+                {
+                    var state = controller.GetState();
+
+                    // Wait the appropriate amount of time before sending the button press
+                    if (input.TimeBetweenPresses > TimeSpan.Zero)
+                    {
+                        Thread.Sleep(input.TimeBetweenPresses);
+                    }
+
+                    // Press the button
+                    var keystroke = new XINPUT_KEYSTROKE();
+                    keystroke.VirtualKey = (ushort)(input.Button + 1);
+                    keystroke.Flags = 0x0001; // Key down
+                    XInputSendKeystroke((uint)userIndex, ref keystroke);
+
+                    // Wait for the press to complete
+                    Thread.Sleep(input.PressDuration);
+
+                    // Release the button
+                    keystroke.Flags = 0x0002; // Key up
+                    XInputSendKeystroke((uint)userIndex, ref keystroke);
+
+                    // Wait for the release to complete
+                    Thread.Sleep(10);
+                }
+            }
+        }
+    }
+
+    class GamepadInput
+    {
+        public int Button { get; set; }
+        public TimeSpan PressDuration { get; set; }
+        public TimeSpan TimeBetweenPresses { get; set; }
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct XINPUT_KEYSTROKE
+    {
+        public ushort VirtualKey;
+        public ushort Unicode;
+public ushort Flags;
+    public byte UserIndex;
+    public byte HidCode;
+}
+
+[System.Runtime.InteropServices.DllImport("XInput1_4.dll")]
+static extern uint XInputSetState(uint dwUserIndex, ref XINPUT_VIBRATION pVibration);
+
+[System.Runtime.InteropServices.DllImport("XInput1_4.dll")]
+static extern uint XInputSendKeystroke(uint dwUserIndex, ref XINPUT_KEYSTROKE pKeystroke);
+
+[System.Runtime.InteropServices.DllImport("XInput1_4.dll")]
+static extern void XInputEnable(bool enable);
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+using XInputDotNetPure;
+
+public class XInputJoystickRecorder
+{
+    private List<XInputRecordedInput> inputs = new List<XInputRecordedInput>();
+
+    public void StartRecording(int playerIndex)
+    {
+        XInputEnable(true);
+
+        while (true)
+        {
+            GamePadState state = GamePad.GetState((PlayerIndex)playerIndex);
+
+            XInputRecordedInput input = new XInputRecordedInput
+            {
+                Flags = state.PacketNumber,
+                UserIndex = (byte)playerIndex,
+                LeftThumbX = state.ThumbSticks.Left.X,
+                LeftThumbY = state.ThumbSticks.Left.Y,
+                RightThumbX = state.ThumbSticks.Right.X,
+                RightThumbY = state.ThumbSticks.Right.Y,
+                LeftTrigger = state.Triggers.Left,
+                RightTrigger = state.Triggers.Right,
+                DPad = state.DPad,
+                Buttons = state.Buttons
+            };
+
+            inputs.Add(input);
+
+            System.Threading.Thread.Sleep(10);
+        }
+    }
+
+    public void StopRecording(string filePath)
+    {
+        XInputEnable(false);
+
+        string jsonString = JsonSerializer.Serialize(inputs);
+        File.WriteAllText(filePath, jsonString);
+
+        inputs.Clear();
+    }
+}

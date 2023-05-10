@@ -1,0 +1,41 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+using System.Threading;
+using XInputDotNetPure;
+
+public class XInputJoystickPlayer
+{
+    private List<XInputRecordedInput> inputs;
+
+    public void Play(string filePath, int playerIndex)
+    {
+        string jsonString = File.ReadAllText(filePath);
+        inputs = JsonSerializer.Deserialize<List<XInputRecordedInput>>(jsonString);
+
+        XInputEnable(true);
+
+        foreach (XInputRecordedInput input in inputs)
+        {
+            GamePad.SetVibration((PlayerIndex)playerIndex, input.LeftTrigger * 65535f, input.RightTrigger * 65535f);
+
+            GamePadState state = new GamePadState
+            {
+                PacketNumber = input.Flags,
+                ThumbSticks = new GamePadThumbSticks(new Vector2(input.LeftThumbX, input.LeftThumbY), new Vector2(input.RightThumbX, input.RightThumbY)),
+                Triggers = new GamePadTriggers(input.LeftTrigger, input.RightTrigger),
+                Buttons = input.Buttons,
+                DPad = input.DPad
+            };
+
+            GamePad.SetState((PlayerIndex)playerIndex, state);
+
+            Thread.Sleep(10);
+        }
+
+        GamePad.SetVibration((PlayerIndex)playerIndex, 0f, 0f);
+
+        XInputEnable(false);
+    }
+}

@@ -1,0 +1,41 @@
+using System;
+using System.IO;
+using System.Text.Json;
+using SDL2;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        // Initialize SDL
+        SDL.SDL_Init(SDL.SDL_INIT_JOYSTICK);
+
+        // Open joystick device
+        IntPtr joystick = SDL.SDL_JoystickOpen(0);
+
+        // Read JSON file
+        string json = File.ReadAllText("joystick_name.json");
+
+        // Deserialize inputs from JSON
+        JoystickInput[] inputs = JsonSerializer.Deserialize<JoystickInput[]>(json);
+
+        // Play back inputs
+        foreach (var input in inputs)
+        {
+            SDL.SDL_JoystickButton(joystick, input.Button, input.PressDuration.Ticks);
+            System.Threading.Thread.Sleep((int)input.PressDuration.TotalMilliseconds);
+        }
+
+        // Close joystick device
+        SDL.SDL_JoystickClose(joystick);
+
+        // Quit SDL
+        SDL.SDL_Quit();
+    }
+
+    class JoystickInput
+    {
+        public int Button { get; set; }
+        public TimeSpan PressDuration { get; set; }
+    }
+}

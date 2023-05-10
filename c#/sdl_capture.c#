@@ -1,0 +1,90 @@
+using System;
+using System.IO;
+using System.Text.Json;
+using System.Threading;
+using SDL2;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        // Initialize SDL
+        SDL.SDL_Init(SDL.SDL_INIT_JOYSTICK);
+
+        // Open joystick device
+        IntPtr joystick = SDL.SDL_JoystickOpen(0);
+
+        // Get joystick name
+        string joystickName = SDL.SDL_JoystickName(joystick);
+
+        // Create event structure
+        SDL.SDL_Event e;
+
+        // Record inputs
+        bool isRecording = true;
+        DateTime lastPressTime = DateTime.Now;
+        JoystickInput currentInput = null;
+        JoystickInput[] inputs = new JoystickInput[0];
+
+        while (isRecording)
+        {
+            // Poll for event
+            while (SDL.SDL_PollEvent(out e) != 0)
+            {
+                // Handle joystick events
+                if (e.type == SDL.SDL_EventType.SDL_JOYBUTTONDOWN)
+                {
+                    currentInput = new JoystickInput
+                    {
+                        Button = e.jbutton.button,
+                        PressStart = DateTime.Now,
+                        PressDuration = TimeSpan.Zero
+                    };
+                }
+                else if (e.type == SDL.SDL_EventType.SDL_JOYBUTTONUP && currentInput != null && currentInput.Button == e.jbutton.button)
+                {
+                    currentInput.PressDuration = DateTime.Now - currentInput.PressStart;
+                    lastPressTime = DateTime.Now;
+                    Array.Resize(ref inputs, inputs.Length + 1);
+                    inputs[inputs.Length - 1] = currentInput;
+                    currentInput = null;
+                }
+            }
+
+            // Check for idle time
+            if (currentInput != null && DateTime.Now - lastPressTime > TimeSpan.FromSeconds(1))
+            {
+                currentInput.PressDuration = DateTime.Now - currentInput.PressStart;
+                lastPressTime = DateTime.Now;
+                Array.Resize(ref inputs, inputs.Length + 1);
+                inputs[inputs.Length - 1] = currentInput;
+                currentInput = null;
+            }
+
+            // Sleep to reduce CPU usage
+            Thread.Sleep(1);
+        }
+
+        // Close joystick device
+        SDL.SDL_JoystickClose(joystick);
+
+        // Quit SDL
+        SDL.SDL_Quit();
+
+        // Serialize inputs to JSON
+        string json = JsonSerializer.Serialize(inputs, new JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+
+        // Write JSON to file
+        File.WriteAllText(joystickName + ".json", json);
+    }
+
+    class JoystickInput
+    {
+        public int Button { get; set; }
+        public DateTime PressStart { get; set; }
+        public TimeSpan PressDuration { get; set; }
+    }
+}

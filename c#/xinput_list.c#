@@ -1,0 +1,53 @@
+using System;
+using System.Runtime.InteropServices;
+using Microsoft.Xna.Framework.Input;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        // Initialize XInput
+        XInputEnable(true);
+
+        // Iterate through all possible XInput devices
+        for (int i = 0; i < 4; i++)
+        {
+            // Create XInput state
+            XINPUT_STATE state = new XINPUT_STATE();
+
+            // Get XInput state for device
+            uint result = XInputGetState((uint)i, ref state);
+
+            // Check if device is connected
+            if (result == 0)
+            {
+                Console.WriteLine("XInput joystick device {0} is connected", i);
+            }
+        }
+    }
+
+    // Import XInput functions
+    [DllImport("xinput1_4.dll")]
+    static extern void XInputEnable(bool enable);
+    [DllImport("xinput1_4.dll")]
+    static extern uint XInputGetState(uint dwUserIndex, ref XINPUT_STATE pState);
+
+    // Define XInput state struct
+    struct XINPUT_STATE
+    {
+        public uint dwPacketNumber;
+        public XINPUT_GAMEPAD Gamepad;
+    }
+
+    // Define XInput gamepad struct
+    struct XINPUT_GAMEPAD
+    {
+        public ushort wButtons;
+        public byte bLeftTrigger;
+        public byte bRightTrigger;
+        public short sThumbLX;
+        public short sThumbLY;
+        public short sThumbRX;
+        public short sThumbRY;
+    }
+}

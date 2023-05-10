@@ -1,0 +1,23 @@
+using System;
+using SDL2;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        // Initialize SDL
+        SDL.SDL_Init(SDL.SDL_INIT_JOYSTICK);
+
+        // Get number of joysticks
+        int numJoysticks = SDL.SDL_NumJoysticks();
+
+        // List all joysticks
+        for (int i = 0; i < numJoysticks; i++)
+        {
+            Console.WriteLine("Joystick " + i + ": " + SDL.SDL_JoystickNameForIndex(i));
+        }
+
+        // Quit SDL
+        SDL.SDL_Quit();
+    }
+}

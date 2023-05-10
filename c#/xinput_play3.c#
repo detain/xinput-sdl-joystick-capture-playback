@@ -1,0 +1,51 @@
+using Newtonsoft.Json;
+using System;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using XInputDotNetPure;
+
+public class XInputPlayback
+{
+    private readonly XInputJoystick _joystick;
+    private readonly InputPlayback _playback;
+
+    public XInputPlayback(XInputJoystick joystick, string inputFilePath)
+    {
+        _joystick = joystick;
+
+        var inputString = File.ReadAllText(inputFilePath);
+        var inputs = JsonConvert.DeserializeObject<InputPlayback[]>(inputString);
+        _playback = new InputPlayback(inputs);
+    }
+
+    public async Task Start()
+    {
+        await Task.Run(() =>
+        {
+            var previousInputTime = _playback.Inputs.FirstOrDefault()?.Time ?? 0;
+            var previousOutputTime = DateTime.Now.Ticks;
+
+            foreach (var input in _playback.Inputs)
+            {
+                var inputDelay = input.Time - previousInputTime;
+                var outputDelay = DateTime.Now.Ticks - previousOutputTime;
+
+                if (inputDelay > outputDelay)
+                    Task.Delay(TimeSpan.FromTicks(inputDelay - outputDelay)).Wait();
+
+                _joystick.SetButtonState(input.Button, input.State == 1);
+                _joystick.SetAxisPosition(input.Axis, input.Position);
+
+                previousInputTime = input.Time;
+                previousOutputTime = DateTime.Now.Ticks;
+            }
+        });
+    }
+}
+
+var joystickIndex = 0;
+var joystick = new XInputJoystick(joystickIndex);
+var playback = new XInputPlayback(joystick, "input.json");
+
+await playback.Start();
