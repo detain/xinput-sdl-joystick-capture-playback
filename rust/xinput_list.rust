@@ -1,0 +1,18 @@
+fn list_joystick_devices() {
+    let output = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("xinput list --name-only | grep -i joystick")
+        .output()
+        .expect("failed to execute process");
+
+    let devices = String::from_utf8_lossy(&output.stdout);
+    let devices = devices.trim();
+
+    if devices.len() > 0 {
+        println!("{}", devices);
+    }
+}
+
+fn main() {
+    list_joystick_devices();
+}

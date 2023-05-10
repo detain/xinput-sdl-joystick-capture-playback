@@ -1,0 +1,74 @@
+use serde_json::{Result, Value};
+use std::fs::File;
+use std::io::{BufRead, BufReader, Result as IoResult};
+use std::process::{Command, Stdio};
+
+fn main() -> Result<()> {
+    let devices = list_joystick_devices();
+    let device = get_device(&devices)?;
+
+    let mut child = Command::new("xinput")
+        .arg("test")
+        .arg(device)
+        .stdin(Stdio::piped())
+        .spawn()
+        .expect("failed to execute child");
+
+    let stdin = child.stdin.as_mut().unwrap();
+
+    let file = File::open("joystick_events.json")?;
+    let reader = BufReader::new(file);
+
+    for line in reader.lines() {
+        let input: Value = serde_json::from_str(&line?)?;
+        let event_type = input["type"].as_u64().unwrap();
+        let event_code = input["code"].as_u64().unwrap();
+        let event_value = input["value"].as_i64().unwrap();
+
+        let input_str = format!("{} {} {}", event_type, event_code, event_value);
+        stdin.write_all(input_str.as_bytes())?;
+        stdin.write_all(b"\n")?;
+    }
+
+    Ok(())
+}
+
+fn list_joystick_devices() -> String {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg("xinput list --name-only | grep -i joystick")
+        .output()
+        .expect("failed to execute process");
+
+    let devices = String::from_utf8_lossy(&output.stdout);
+    devices.trim().to_string()
+}
+
+fn get_device(devices: &str) -> IoResult<String> {
+    let mut index = 1;
+    for device in devices.split('\n') {
+        if !device.is_empty() {
+            println!("{}: {}", index, device);
+            index += 1;
+        }
+    }
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+
+    let selected_device_index = input.trim().parse::<usize>()?;
+    let mut selected_device = String::new();
+
+    index = 1;
+    for device in devices.split('\n') {
+        if !device.is_empty() {
+            if index == selected_device_index {
+                selected_device = device.to_string();
+                break;
+            }
+            index += 1;
+        }
+    }
+
+    Ok(selected_device)
+}

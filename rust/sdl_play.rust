@@ -1,0 +1,52 @@
+use sdl2::{event::Event, joystick::Joystick};
+use serde::{Deserialize, Serialize};
+use std::{fs::File, io::BufReader, time::Duration};
+
+#[derive(Debug, Deserialize, Serialize)]
+struct JoystickRecord {
+    button: i32,
+    duration: u64,
+    time_between: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct JoystickRecordings {
+    joystick_name: String,
+    recordings: Vec<JoystickRecord>,
+}
+
+fn read_json_file(file_path: &str) -> Result<JoystickRecordings, Box<dyn std::error::Error>> {
+    let file = File::open(file_path)?;
+    let reader = BufReader::new(file);
+    let recordings = serde_json::from_reader(reader)?;
+    Ok(recordings)
+}
+
+fn play_back_recordings(joystick: &mut Joystick, recordings: Vec<JoystickRecord>) {
+    for record in recordings {
+        joystick.set_button(record.button, true);
+        std::thread::sleep(Duration::from_millis(record.duration));
+        joystick.set_button(record.button, false);
+        std::thread::sleep(Duration::from_millis(record.time_between));
+    }
+}
+
+fn main() {
+    let sdl_context = sdl2::init().unwrap();
+    let joystick_subsystem = sdl_context.joystick().unwrap();
+    let available =
+        (0..joystick_subsystem.num_joysticks().unwrap()).map(|id| joystick_subsystem.open(id));
+    let joysticks: Vec<_> = available.filter_map(Result::ok).collect();
+
+    for joystick in joysticks {
+        println!("Joystick: {:?}", joystick.name());
+    }
+
+    let recordings = read_json_file("joystick_recordings.json").unwrap();
+    let mut joystick = joysticks
+        .iter_mut()
+        .find(|j| j.name() == recordings.joystick_name)
+        .unwrap();
+
+    play_back_recordings(&mut joystick, recordings.recordings);
+}

@@ -1,0 +1,26 @@
+extern crate sdl2;
+
+use sdl2::controller::{GameControllerSubsystem, GameController};
+use sdl2::get_error;
+use sdl2::hint::set;
+use sdl2::video::Window;
+use sdl2::EventPump;
+
+fn main() {
+    set("SDL_GAMECONTROLLERCONFIG", "").unwrap();
+
+    let sdl_context = sdl2::init().unwrap();
+    let controller_subsystem = sdl_context.game_controller().unwrap();
+
+    for i in 0..controller_subsystem.num_joysticks().unwrap() {
+        if let Some(game_controller) = controller_subsystem.open(i) {
+            println!("Joystick {}:", i);
+            println!("  Name: {}", game_controller.name());
+            println!("  Axes: {}", game_controller.num_axes());
+            println!("  Buttons: {}", game_controller.num_buttons());
+        } else {
+            println!("Could not open joystick {}", i);
+            println!("Error: {}", get_error());
+        }
+    }
+}

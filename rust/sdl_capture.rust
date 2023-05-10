@@ -1,0 +1,68 @@
+extern crate sdl2;
+extern crate serde;
+extern crate serde_json;
+
+use std::fs::File;
+use std::io::Write;
+use std::time::{Instant, Duration};
+use sdl2::controller::{GameControllerSubsystem, GameController};
+use sdl2::event::Event;
+use sdl2::hint::set;
+use sdl2::video::Window;
+use sdl2::EventPump;
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
+struct InputRecord {
+    timestamp: String,
+    input_type: String,
+    value: i32,
+    duration: i64,
+}
+
+fn main() {
+    set("SDL_GAMECONTROLLERCONFIG", "").unwrap();
+
+    let sdl_context = sdl2::init().unwrap();
+    let controller_subsystem = sdl_context.game_controller().unwrap();
+
+    let joystick_index = 0; // Change this to select a different joystick
+    let mut game_controller = controller_subsystem.open(joystick_index).unwrap();
+
+    let mut event_pump = sdl_context.event_pump().unwrap();
+    let mut last_press_time = Instant::now();
+    let mut input_record_vec: Vec<InputRecord> = Vec::new();
+
+    loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::ControllerButtonDown { timestamp, which, button } => {
+                    let time_since_last_press = last_press_time.elapsed();
+                    input_record_vec.push(InputRecord {
+                        timestamp: format!("{:?}", timestamp),
+                        input_type: "button".to_string(),
+                        value: button as i32,
+                        duration: time_since_last_press.as_millis() as i64,
+                    });
+                    last_press_time = Instant::now();
+                }
+                Event::ControllerAxisMotion { timestamp, which, axis, value } => {
+                    let time_since_last_press = last_press_time.elapsed();
+                    input_record_vec.push(InputRecord {
+                        timestamp: format!("{:?}", timestamp),
+                        input_type: "axis".to_string(),
+                        value: value as i32,
+                        duration: time_since_last_press.as_millis() as i64,
+                    });
+                    last_press_time = Instant::now();
+                }
+                Event::Quit {..} => {
+                    let file = File::create("input_record.json").expect("Unable to create file");
+                    serde_json::to_writer_pretty(&file, &input_record_vec).expect("Unable to write to file");
+                    return;
+                }
+                _ => {}
+            }
+        }
+    }
+}

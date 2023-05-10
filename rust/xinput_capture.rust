@@ -1,0 +1,66 @@
+use std::io::{self, Read};
+use std::process::{Command, Stdio};
+
+fn main() -> io::Result<()> {
+    let devices = list_joystick_devices();
+    let device = get_device(&devices)?;
+
+    let mut child = Command::new("xinput")
+        .arg("test")
+        .arg(device)
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("failed to execute child");
+
+    let stdout = child.stdout.take().unwrap();
+
+    let mut buffer = [0; 8];
+    loop {
+        match stdout.lock().read_exact(&mut buffer) {
+            Ok(_) => println!("{:?}", buffer),
+            Err(_) => break,
+        }
+    }
+
+    Ok(())
+}
+
+fn list_joystick_devices() -> String {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg("xinput list --name-only | grep -i joystick")
+        .output()
+        .expect("failed to execute process");
+
+    let devices = String::from_utf8_lossy(&output.stdout);
+    devices.trim().to_string()
+}
+
+fn get_device(devices: &str) -> io::Result<String> {
+    let mut index = 1;
+    for device in devices.split('\n') {
+        if !device.is_empty() {
+            println!("{}: {}", index, device);
+            index += 1;
+        }
+    }
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    let selected_device_index = input.trim().parse::<usize>()?;
+    let mut selected_device = String::new();
+
+    index = 1;
+    for device in devices.split('\n') {
+        if !device.is_empty() {
+            if index == selected_device_index {
+                selected_device = device.to_string();
+                break;
+            }
+            index += 1;
+        }
+    }
+
+    Ok(selected_device)
+}
